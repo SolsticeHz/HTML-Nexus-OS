@@ -1,7 +1,7 @@
 <!DOCTYPE html><html lang="en" data-theme="dark"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>New Tab</title>
 <script>
-var CONSOLE_OS_VERSION="2026.11.14";
-var CONSOLE_OS_UPDATE_NOTES="Added Live Share (watch screenshares across devices), Screen Capture (screenshots and recordings saved to Files) a power saver for fullscreen apps, and Ctrl+S takes a screenshot.";
+var CONSOLE_OS_VERSION="2026.11.15";
+var CONSOLE_OS_UPDATE_NOTES="Fullscreen apps now close all windows and pause background processes (chat, clock, timers) for more resources.";
 var CONSOLE_OS_SUGGESTIONS={googleFormUrl:"",googleEntryMessage:"",formspreeUrl:"https://formspree.io/f/mdeepvqv"};
 var CONSOLE_OS_UPDATE_URL="https://raw.githubusercontent.com/SolsticeHz/HTML-Console-OS/refs/heads/main/Console_OS.html";
 (function(){
@@ -36,7 +36,7 @@ try{sessionStorage.setItem('consoleos_swapped',pl.version);}catch(e){}
 window.__cosSwapping=true;
 var f=document.createElement('iframe');
 f.id='cosRunner';
-f.setAttribute('allow','fullscreen; autoplay; clipboard-write; clipboard-read; encrypted-media; picture-in-picture; gyroscope; accelerometer; gamepad; display-capture');
+f.setAttribute('allow','fullscreen; autoplay; clipboard-write; clipboard-read; encrypted-media; picture-in-picture; gyroscope; accelerometer; gamepad');
 f.setAttribute('allowfullscreen','');
 f.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;border:0;margin:0;padding:0;z-index:2147483647;background:#000;';
 f.srcdoc=pl.html;
@@ -1258,20 +1258,6 @@ border-right:1px solid var(--line);color:var(--te-gutter-fg);user-select:none;-w
 .te-status select option{background:var(--flyout-solid);color:var(--text)}
 .chat-online{font-size:11px;color:var(--text-soft);display:flex;align-items:center;gap:4px;white-space:nowrap;padding:2px 8px;border-radius:10px;background:var(--card-bg-2);border:1px solid var(--line)}
 @media (prefers-reduced-motion:reduce){.toast,.toast.out{animation:none}#thumbCard{transition:none}}
-.lv-root,.cp-root{display:flex;flex-direction:column;height:100%;min-height:0}
-.lv-tabs{overflow-x:auto;max-width:100%;flex-wrap:nowrap}
-.lv-tabs .as-tab{white-space:nowrap}
-.lv-share,.cp-main{flex:1;min-height:0;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
-.lv-view{flex:1;min-height:0;position:relative;background:#000}
-.lv-video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
-.lv-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:13px;text-align:center;padding:20px;pointer-events:none}
-.lv-msg:empty{display:none}
-.lv-dot{color:#e81123}
-.lv-share[hidden],.lv-view[hidden]{display:none}
-.cp-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.cp-time{font-variant-numeric:tabular-nums;font-size:13px;color:var(--text-soft)}
-.cp-item{display:flex;gap:8px;align-items:center;padding:6px 8px;background:var(--card-bg);border:1px solid var(--line);border-radius:8px;font-size:12px;margin-bottom:6px}
-.cp-item span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style></head><body>
 <div id="desktop" aria-label="Nexus Desktop"></div>
 <div id="settingsWindow" class="win11-window minimized" aria-label="Settings Window">
@@ -1582,7 +1568,6 @@ const RELAY_BROKERS=[
 ];
 const RELAY_TOPIC="nexus-shift-global-chat-q8w3k7x2m9";
 const TOPIC_ROOT="nexus-shift/"+RELAY_TOPIC;
-const LIVE_PFX=TOPIC_ROOT+"/live/";
 const HISTORY_SECONDS=12*3600;
 const MAX_TEXT=500;
 const MAX_NAME=20;
@@ -1603,6 +1588,7 @@ let statusLabel="Connecting...";
 let transport="Connecting...";
 let renderTimer=null;
 let retryTimer=null;
+let sus=false;
 const pending=[];
 let storedRaw=null,storedArr=[];
 function getStoredMessages(){
@@ -1818,12 +1804,12 @@ flushPending();
 sendPresence({hello:true});
 },
 onmessage:(topic,bytes,retained)=>{
-if(topic.indexOf(LIVE_PFX)===0){if(!retained)liveRx(topic.slice(LIVE_PFX.length),bytes);return;}
 if(retained&&topic===TOPIC_ROOT+"/presence")return;
 handleRelayEvent(bytes,retained);
 },
 onclose:()=>{
 l.client=null;
+if(sus)return;
 l.tries++;
 refreshLinkStatus();
 const wait=Math.min(30000,3000*Math.pow(2,Math.min(l.tries-1,4)));
@@ -1913,29 +1899,15 @@ channel:RELAY_TOPIC,
 online:onlineCount()
 };
 }
-const liveSeen=new Set(),liveSubs=[];
-function liveRx(sub,bytes){
-let d;
-try{d=JSON.parse(new TextDecoder().decode(bytes));}catch(e){return;}
-if(!d||typeof d.m!=="string"||d.m.length>40||liveSeen.has(d.m))return;
-liveSeen.add(d.m);
-if(liveSeen.size>600)liveSeen.delete(liveSeen.values().next().value);
-liveSubs.forEach(f=>{try{f(sub,d);}catch(e){}});
-}
-window.LiveRelay={
-id:userId,
-up:()=>isConnected,
-send(sub,o){
-o.m=userId.slice(-5)+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
-liveSeen.add(o.m);
-const b=JSON.stringify(o);
-let n=0;
-links.forEach(l=>{if(l.client&&l.client.isReady()&&l.client.publish(LIVE_PFX+sub,b))n++;});
-return n>0;
-},
-on(f){liveSubs.push(f);return()=>{const i=liveSubs.indexOf(f);if(i>=0)liveSubs.splice(i,1);};}
-};
-window.ChatEngine={clear:()=>clearChat(true),getStats:getStats};
+window.ChatEngine={clear:()=>clearChat(true),getStats:getStats,suspend:on=>{
+sus=!!on;
+if(sus){
+sendPresence({leaving:true});
+clearTimeout(retryTimer);retryTimer=null;
+links.forEach(l=>{if(l.timer){clearTimeout(l.timer);l.timer=null;}if(l.client)l.client.close();});
+refreshLinkStatus();
+}else connectRelay();
+}};
 window.addEventListener("DOMContentLoaded",()=>{
 const nameInput=document.getElementById("chatUsernameInput");
 if(nameInput&&(!nameInput.value||nameInput.value==="GuestUser")){
@@ -1957,8 +1929,8 @@ input.value="";
 renderMessages();
 renderOnline();
 connectRelay();
-setInterval(()=>sendPresence(),PRESENCE_EVERY);
-setInterval(renderOnline,5000);
+setInterval(()=>{if(!sus)sendPresence();},PRESENCE_EVERY);
+setInterval(()=>{if(!sus)renderOnline();},5000);
 window.addEventListener("pagehide",()=>sendPresence({leaving:true}));
 });
 })();
@@ -1972,16 +1944,6 @@ chat:"win11_chat_history_store_v2",
 layout:"win11_desktop_layout_v1",
 pins:"win11_taskbar_pins_v1"
 };
-const Power=(function(){
-const subs=[];
-let on=false;
-return{on:()=>on,register:fn=>subs.push(fn),set(v){
-v=!!v;
-if(on===v)return;
-on=v;
-subs.forEach(f=>{try{f(v);}catch(e){}});
-}};
-})();
 const ORIGINAL_DEFAULT_BG="linear-gradient(135deg, #101c38, #221547, #3d1547)";
 const ICON_SIZES={
 small:{w:68,h:80,emoji:30,font:11,label:"Small"},
@@ -4107,7 +4069,6 @@ icon:opts.icon||'🗔',
 itemId:opts.itemId||null,
 onClose:opts.onClose||null,
 beforeClose:opts.beforeClose||null,
-keep:opts.keep||null,
 lastSize:null,
 snap:null,
 normal:null,
@@ -4266,7 +4227,7 @@ setState(w,'min');
 if(focusedId===id)focusedId=null;
 renderStrip();
 }
-function close(id,quiet){
+function close(id){
 const w=wins.get(id);
 if(!w)return;
 if(w.beforeClose){
@@ -4278,7 +4239,7 @@ const wasOpen=w.state!=='closed';
 w.el.classList.add('minimized');
 setState(w,'closed');
 if(focusedId===id)focusedId=null;
-if(wasOpen&&!quiet&&typeof Sounds!=='undefined')Sounds.close();
+if(wasOpen&&typeof Sounds!=='undefined')Sounds.close();
 if(w.onClose){try{w.onClose();}catch(_){}}
 renderStrip();
 }
@@ -4318,12 +4279,6 @@ if(w.state==='min')open(id);
 else if(focusedId===id)minimize(id);
 else focus(id);
 }
-function closeAll(){
-Array.from(wins.values()).forEach(w=>{
-if(w.state==="closed")return;
-if(w.keep&&w.keep())minimize(w.id);else close(w.id,true);
-});
-}
 function byItem(itemId){
 for(const w of wins.values()){
 if(w.itemId===itemId&&w.state!=='closed')return w;
@@ -4351,7 +4306,7 @@ renderWindows();
 if(typeof Taskbar!=='undefined')Taskbar.renderPinned();
 }
 return{
-register,open,minimize,close,closeAll,toggleMax,focus,destroy,setTitle,
+register,open,minimize,close,toggleMax,focus,destroy,setTitle,
 activate,byItem,renderWindows,
 topZ:()=>zTop,
 get:id=>wins.get(id),
@@ -4366,8 +4321,6 @@ const desktopApps=[
 {id:"app:files",name:"File Manager",type:"desktop",kind:"app",icon:"🗂️",category:"Desktop App",action:()=>FileManagerAPI.show()},
 {id:"app:chat",name:"Global Chat",type:"chat",kind:"app",icon:"💬",category:"Community App",action:()=>openChatApp()},
 {id:"app:video",name:"Video Player",type:"desktop",kind:"app",icon:"▶️",category:"Desktop App",action:()=>openVideoPlayer()},
-{id:"app:live",name:"Live Share",type:"desktop",kind:"app",icon:"📡",category:"Desktop App",action:()=>AppStore.openEntry("live-share")},
-{id:"app:capture",name:"Screen Capture",type:"desktop",kind:"app",icon:"🎥",category:"Desktop App",action:()=>AppStore.openEntry("screen-capture")},
 {id:"app:info",name:"Info Page",type:"portal",kind:"app",url:"https://info-page.wasmer.app/",icon:"🌐",category:"Desktop App"},
 {id:"app:blender",name:"Blender Web",type:"portal",kind:"app",url:"https://peekaboom-proxy.github.io/__px/https://developer.puter.com/labs/blender-web/",icon:"🟧",category:"Desktop App"},
 {id:"app:browser",name:"Web Browser",type:"portal",kind:"app",url:"https://ltorl.github.io/knoiren-browser",icon:"🌍",category:"Desktop App"}
@@ -5588,6 +5541,7 @@ this._encoder=new TextEncoder();
 this._decoder=new TextDecoder();
 this._chars="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 this._cryptoReady=false;
+this._held=false;
 this._msgHandler=e=>this._onMessage(e);
 window.addEventListener("message",this._msgHandler);
 this._initCrypto();
@@ -5639,14 +5593,12 @@ for(let i=0;i<len;i++)str+=c.charAt((Math.random()*62)|0);
 return str;
 }
 launch(url,name){
-this.clear(!!url);
+this.clear();
 if(!url)return;
 this.url=url;
 this.name=name||null;
 this._escalated=false;
 this.active=true;
-Power.set(true);
-WindowManager.closeAll();
 if(typeof Sounds!=='undefined')Sounds.open();
 this.style.pointerEvents="auto";
 const frag=document.createDocumentFragment();
@@ -5658,10 +5610,19 @@ this.appendChild(frag);
 this.iframes=frames;
 this._setupHealing();
 this._showLoader(name,frames[0]);
-if(!WindowManager.isClosed('videoWindow')){
-WindowManager.close('videoWindow');
-}
+this._sus(true);
 $('fullscreenExitBtn').style.display='flex';
+}
+_sus(on){
+if(this._held===on)return;
+this._held=on;
+if(on){
+startMenu.classList.remove('open');closeSearch();QuickSettings.close();Notify.close();
+WindowManager.list().filter(w=>w.state!=='closed').forEach(w=>WindowManager.close(w.id));
+clearInterval(clockT);
+}else{updateClock();clockT=setInterval(updateClock,1000);}
+TimerService.hold(on);
+if(window.ChatEngine)window.ChatEngine.suspend(on);
 }
 _showLoader(name,frame){
 this._removeLoader();
@@ -5771,11 +5732,10 @@ iframes[i].contentWindow.postMessage(ping,"*");
 }catch(e){}
 },5000);
 }
-clear(keep){
+clear(){
 this._removeLoader();
 this._escalated=false;
 this.active=false;
-if(!keep)Power.set(false);
 this.name=null;
 this.style.pointerEvents="none";
 if(this.mutationObs){this.mutationObs.disconnect();this.mutationObs=null;}
@@ -5788,6 +5748,7 @@ if(f.parentNode)f.parentNode.removeChild(f);
 }
 iframes.length=0;
 this.url=null;
+this._sus(false);
 $('fullscreenExitBtn').style.display='none';
 }
 get primaryFrame(){return this.iframes[0]||null;}
@@ -5904,7 +5865,6 @@ const dateStr=now.toLocaleDateString();
 $('taskbarClock').innerHTML=`${timeStr}<br>${dateStr}`;
 }
 let clockT=setInterval(updateClock,1000);
-Power.register(on=>{clearInterval(clockT);if(!on){updateClock();clockT=setInterval(updateClock,1000);}});
 window.addEventListener('DOMContentLoaded',()=>{
 SettingsManager.init();
 WindowManager.register($('settingsWindow'),{title:'System Settings',icon:'⚙️',itemId:'app:settings'});
@@ -5961,12 +5921,6 @@ window:{width:760,height:540},mount:PhotoViewerApp,system:true},
 {id:"media-player",type:"app",name:"Media Player",icon:"🎬",category:"Tools",
 description:"Plays videos saved in File Manager.",
 window:{width:820,height:560},mount:MediaPlayerApp,system:true},
-{id:"live-share",type:"app",name:"Live Share",icon:"📡",category:"Tools",
-description:"Share your screen live. Anyone with this file can watch from any device, one tab per stream.",
-window:{width:760,height:520},mount:LiveShareApp,system:true},
-{id:"screen-capture",type:"app",name:"Screen Capture",icon:"🎥",category:"Tools",
-description:"Take screenshots and record your screen. Saved straight into File Manager (Documents, Captures).",
-window:{width:520,height:480},mount:CaptureApp,system:true},
 {id:"wikipedia",type:"link",name:"Wikipedia",icon:"📖",category:"Reference",
 description:"The free online encyclopedia.",url:"https://en.m.wikipedia.org/"},
 {id:"excalidraw",type:"link",name:"Excalidraw",icon:"✏️",category:"Creative",
@@ -6011,9 +5965,8 @@ div.innerHTML=`
       <div class="win-body app-body"></div>`;
 document.body.appendChild(div);
 const closers=[];
-const guards=[],keeps=[];
+const guards=[];
 WindowManager.register(div,{
-keep:()=>keeps.some(fn=>{try{return!!fn();}catch(_){return false;}}),
 title:def.title,
 icon:def.icon||'🗔',
 itemId:def.itemId,
@@ -6029,7 +5982,6 @@ id:def.id,
 storage:makeStorage(def.id),
 onClose:fn=>{if(typeof fn==='function')closers.push(fn);},
 beforeClose:fn=>{if(typeof fn==='function')guards.push(fn);},
-keepOpen:fn=>{if(typeof fn==='function')keeps.push(fn);},
 close:()=>WindowManager.close(wid),
 setTitle:t=>WindowManager.setTitle(wid,t)
 };
@@ -6485,7 +6437,7 @@ const DEFAULT_MS=300000;
 const sw={elapsed:0,start:0,running:false,laps:[]};
 const tm={remaining:DEFAULT_MS,end:0,running:false,done:false,paused:false,total:DEFAULT_MS,min:'5',sec:'0'};
 const subs=[];
-let tick=null,tickMs=0;
+let tick=null,held=false;
 const swNow=()=>sw.elapsed+(sw.running?performance.now()-sw.start:0);
 const tmLeft=()=>tm.running?Math.max(0,tm.end-performance.now()):tm.remaining;
 const tmInput=()=>Math.max(0,(parseInt(tm.min,10)||0)*60000+Math.min(59,parseInt(tm.sec,10)||0)*1000);
@@ -6495,8 +6447,8 @@ return((m?m+' min':'')+(m&&r?' ':'')+(r?r+' sec':''))||'0 sec';
 };
 function emit(){subs.slice().forEach(fn=>{try{fn();}catch(_){}});}
 function syncLoop(){
-const need=sw.running||tm.running,ms=Power.on()?1000:50;
-if(need&&(!tick||tickMs!==ms)){clearInterval(tick);tickMs=ms;tick=setInterval(onTick,ms);}
+const need=!held&&(sw.running||tm.running);
+if(need&&!tick)tick=setInterval(onTick,50);
 else if(!need&&tick){clearInterval(tick);tick=null;}
 }
 function timesUp(){
@@ -6505,11 +6457,11 @@ if(typeof Notify!=='undefined')Notify.push({title:"Time's up!",body:'Your '+word
 }
 function onTick(){
 if(tm.running&&tm.end-performance.now()<=0){tm.running=false;tm.done=true;tm.remaining=0;tm.paused=false;timesUp();}
-if(!Power.on())emit();
+emit();
 syncLoop();
 }
-Power.register(()=>{syncLoop();emit();});
 return{
+hold(on){held=!!on;syncLoop();},
 subscribe(fn){subs.push(fn);return()=>{const i=subs.indexOf(fn);if(i>=0)subs.splice(i,1);};},
 state(){
 return{
@@ -6612,351 +6564,6 @@ q('.tm-reset').addEventListener('click',()=>T.tmReset());
 body.querySelectorAll('.tm-num').forEach(i=>i.addEventListener('input',()=>T.setInputs(q('.tm-min').value,q('.tm-sec').value)));
 ctx.onClose(T.subscribe(render));
 render();
-}
-const RTC_ICE={iceServers:[{urls:["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302"]}]};
-const rid=()=>Math.random().toString(36).slice(2,10);
-const okId=s=>typeof s==="string"&&/^[\w-]{1,24}$/.test(s);
-async function getScreen(audio){
-if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia)throw new Error("This browser can't capture the screen.");
-try{
-return await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:30}},audio:!!audio});
-}catch(e){
-throw new Error(e&&e.name==="NotAllowedError"?"Screen capture was cancelled or isn't allowed here. If this file is embedded in another page, that page must allow display-capture.":(e&&e.message)||"Screen capture failed.");
-}
-}
-let capFid=null,hotBusy=false;
-const capStamp=()=>new Date().toLocaleString('sv').replace(/:/g,'-');
-async function capFolder(){
-if(capFid){const f=await FileStore.get(capFid);if(f&&f.type==='folder')return capFid;}
-const kids=await FileStore.children('documents');
-const f=kids.find(n=>n.type==='folder'&&n.name==='Captures')||await FileStore.createFolder({name:'Captures',parent:'documents'});
-capFid=f.id;
-return capFid;
-}
-function capDl(blob,name){
-const u=URL.createObjectURL(blob),a=document.createElement('a');
-a.href=u;a.download=name;
-document.body.appendChild(a);a.click();a.remove();
-setTimeout(()=>URL.revokeObjectURL(u),4000);
-}
-async function capSave(blob,name,mime){
-const n=await FileStore.createFile({name,parent:await capFolder(),data:blob,mime});
-const img=mime.indexOf('image')===0;
-if(typeof Notify!=='undefined')Notify.push({title:img?'Screenshot saved':'Recording saved',body:n.name+' · '+FileStore.fmtSize(n.size)+' (Documents, Captures)',icon:img?'📸':'🎥',appId:'store:screen-capture'});
-return n;
-}
-async function capShot(){
-const s=await getScreen(false);
-try{
-const v=document.createElement('video');
-v.muted=true;v.playsInline=true;v.srcObject=s;
-await v.play();
-if(!v.videoWidth)await new Promise(r=>{v.onloadedmetadata=r;});
-if(v.requestVideoFrameCallback)await new Promise(r=>v.requestVideoFrameCallback(r));
-else await new Promise(r=>setTimeout(r,400));
-const c=document.createElement('canvas');
-c.width=v.videoWidth;c.height=v.videoHeight;
-c.getContext('2d').drawImage(v,0,0);
-const blob=await new Promise(r=>c.toBlob(r,'image/png'));
-if(!blob)throw new Error('Could not create the image.');
-const name='Screenshot '+capStamp()+'.png';
-try{return{node:await capSave(blob,name,'image/png')};}
-catch(e){capDl(blob,name);return{err:fsErrorText(e)+' It was downloaded instead.'};}
-}finally{s.getTracks().forEach(t=>t.stop());}
-}
-document.addEventListener('keydown',e=>{
-if(!(e.ctrlKey||e.metaKey)||e.altKey||e.shiftKey||e.repeat||e.defaultPrevented||e.key.toLowerCase()!=='s')return;
-e.preventDefault();
-if(hotBusy)return;
-hotBusy=true;
-capShot().then(r=>{if(r.err)Notify.push({title:'Screenshot',body:r.err,icon:'⚠️'});})
-.catch(err=>Notify.push({title:"Couldn't take the screenshot",body:err.message,icon:'⚠️'}))
-.finally(()=>{hotBusy=false;});
-});
-function LiveShareApp(body,ctx){
-const R=window.LiveRelay;
-const streams=new Map(),pcs=new Map(),pend=new Map();
-let tab="share",stream=null,sid=null,me=null,annT=null,vpc=null,vpid=null,vsid=null,wt=null,wasUp=false,disposed=false,queue=[];
-body.innerHTML=`<div class="lv-root"><div class="as-top"><div class="as-tabs lv-tabs"></div></div><div class="lv-share"><div class="settings-card"><div class="settings-card-header">📡 Go live</div><div class="settings-card-desc">Share a screen, window or tab. Anyone who has this file and opens Live Share can watch from any device. Don't share anything private.</div><input type="text" class="settings-input lv-name" maxlength="20" placeholder="Your name" /><input type="text" class="settings-input lv-title" maxlength="60" placeholder="What are you showing? (optional)" /><div class="settings-row"><span>Share audio too (if the browser offers it)</span><input type="checkbox" class="lv-aud" style="width:18px;height:18px;cursor:pointer;" /></div><div class="ps-actions"><button type="button" class="settings-btn lv-go">Start sharing</button></div><div class="settings-msg lv-sm"></div><div class="settings-msg err lv-er"></div></div><div class="settings-card"><div class="settings-card-header">Watching</div><div class="settings-card-desc">Streams from other people appear as tabs above, one per stream. Up to 6 people can watch each stream. Connections are direct between devices, so very strict networks may not connect.</div></div></div><div class="lv-view" hidden><video class="lv-video" autoplay playsinline controls></video><div class="lv-msg"></div></div></div>`;
-const q=s=>body.querySelector(s);
-const vid=q('.lv-video'),msg=q('.lv-msg'),sm=q('.lv-sm'),goBtn=q('.lv-go');
-q('.lv-name').value=((document.getElementById('chatUsernameInput')||{}).value||'').slice(0,20);
-const nm=()=>(ProfanityFilter.clean(q('.lv-name').value.trim())||'Guest').slice(0,20);
-const setMsg=t=>{msg.textContent=t||'';};
-const say=(t,err)=>{const e=q('.lv-er');e.textContent=t||'';e.style.display=t?'':'none';};
-function drawTabs(){
-q('.lv-tabs').innerHTML='<button type="button" class="as-tab'+(tab==='share'?' active':'')+'" data-t="share">📡 Share</button>'+Array.from(streams.values()).map(s=>'<button type="button" class="as-tab'+(tab===s.sid?' active':'')+'" data-t="'+s.sid+'" title="'+escapeHtml(s.title)+'">'+(s.sid===sid?'<span class="lv-dot">●</span> You':'🔴 '+escapeHtml(s.name))+'</button>').join('');
-}
-function drawView(){
-const share=tab==='share';
-q('.lv-share').hidden=!share;
-q('.lv-view').hidden=share;
-drawTabs();
-}
-function stat(){
-if(disposed)return;
-const n=Array.from(pcs.values()).filter(p=>p.connectionState==='connected').length;
-sm.textContent=stream?'You are live · '+n+' watching':(R.up()?'':'Connecting to the relay…');
-goBtn.textContent=stream?'Stop sharing':'Start sharing';
-}
-function disconnect(){
-clearTimeout(wt);
-if(vpc){
-const id=vsid,v=vpid;
-try{vpc.close();}catch(e){}
-vpc=null;
-R.send('sig/'+id,{t:'bye',v});
-}
-vpid=null;vsid=null;queue=[];
-vid.srcObject=null;
-}
-function connect(id){
-setMsg('Connecting…');
-vsid=id;vpid='v'+rid();queue=[];
-const v=vpid,pc=vpc=new RTCPeerConnection(RTC_ICE);
-pc.addTransceiver('video',{direction:'recvonly'});
-pc.addTransceiver('audio',{direction:'recvonly'});
-pc.ontrack=e=>{
-if(vpc!==pc)return;
-vid.srcObject=e.streams[0]||new MediaStream([e.track]);
-setMsg('');
-vid.play().catch(()=>{});
-};
-pc.onicecandidate=e=>{if(e.candidate)R.send('sig/'+id,{t:'ice',v,c:e.candidate.toJSON()});};
-pc.onconnectionstatechange=()=>{
-if(vpc!==pc)return;
-if(pc.connectionState==='failed')setMsg('Connection failed. Some networks block direct connections.');
-else if(pc.connectionState==='disconnected')setMsg('Reconnecting…');
-else if(pc.connectionState==='connected')setMsg('');
-};
-pc.createOffer().then(o=>pc.setLocalDescription(o)).then(()=>R.send('sig/'+id,{t:'offer',v,sdp:pc.localDescription.sdp})).catch(()=>setMsg('Could not start the connection.'));
-wt=setTimeout(()=>{if(vpc===pc&&!vid.srcObject)setMsg('Still waiting for the streamer. They may have left or be on a network that blocks direct connections.');},12000);
-}
-function select(id){
-if(id===tab)return;
-disconnect();
-tab=id==='share'||streams.has(id)?id:'share';
-drawView();
-if(tab==='share')return;
-if(tab===sid){
-vid.muted=true;
-vid.srcObject=stream;
-setMsg('');
-vid.play().catch(()=>{});
-}else{
-vid.muted=false;
-connect(tab);
-}
-}
-function drop(id){
-streams.delete(id);
-if(tab===id){setMsg('');select('share');}else drawTabs();
-}
-function announce(){R.send('ann',{sid,name:me.name,title:me.title});}
-function dropPeer(v){
-const pc=pcs.get(v);
-pcs.delete(v);
-pend.delete(v);
-if(pc)try{pc.close();}catch(e){}
-stat();
-}
-function peer(d){
-if(pcs.has(d.v))return;
-if(pcs.size>=6){R.send('sig/'+d.v,{t:'full'});return;}
-const v=d.v,pc=new RTCPeerConnection(RTC_ICE);
-pc.t0=Date.now();
-pcs.set(v,pc);
-stream.getTracks().forEach(t=>pc.addTrack(t,stream));
-pc.onicecandidate=e=>{if(e.candidate)R.send('sig/'+v,{t:'ice',c:e.candidate.toJSON()});};
-pc.onconnectionstatechange=()=>{
-if(pc.connectionState==='failed'||pc.connectionState==='closed')dropPeer(v);else stat();
-};
-pc.setRemoteDescription({type:'offer',sdp:d.sdp})
-.then(()=>{(pend.get(v)||[]).forEach(c=>pc.addIceCandidate(c).catch(()=>{}));pend.delete(v);return pc.createAnswer();})
-.then(a=>pc.setLocalDescription(a))
-.then(()=>R.send('sig/'+v,{t:'answer',sdp:pc.localDescription.sdp}))
-.catch(()=>dropPeer(v));
-}
-function onViewerMsg(d){
-if(!stream||!okId(d.v))return;
-if(d.t==='offer'&&typeof d.sdp==='string')peer(d);
-else if(d.t==='ice'&&d.c){
-const pc=pcs.get(d.v);
-if(pc&&pc.remoteDescription)pc.addIceCandidate(d.c).catch(()=>{});
-else pend.set(d.v,(pend.get(d.v)||[]).concat([d.c]));
-}else if(d.t==='bye')dropPeer(d.v);
-}
-function onStreamerMsg(d){
-if(!vpc)return;
-if(d.t==='answer'&&typeof d.sdp==='string'){
-vpc.setRemoteDescription({type:'answer',sdp:d.sdp}).then(()=>{queue.forEach(c=>vpc&&vpc.addIceCandidate(c).catch(()=>{}));queue=[];}).catch(()=>setMsg('Could not connect to this stream.'));
-}else if(d.t==='ice'&&d.c){
-if(vpc.remoteDescription)vpc.addIceCandidate(d.c).catch(()=>{});
-else queue.push(d.c);
-}else if(d.t==='end'){
-const id=vsid;
-disconnect();
-drop(id);
-}else if(d.t==='full')setMsg('This stream is full right now. Try again in a bit.');
-}
-ctx.onClose(R.on((sub,d)=>{
-if(sub==='ann'){
-if(!okId(d.sid)||d.sid===sid)return;
-if(d.off){if(streams.has(d.sid))drop(d.sid);return;}
-const had=streams.has(d.sid);
-streams.set(d.sid,{sid:d.sid,name:ProfanityFilter.clean(String(d.name||'Guest')).slice(0,20),title:ProfanityFilter.clean(String(d.title||'')).slice(0,60),ts:Date.now()});
-if(!had)drawTabs();
-}else if(sub==='want'){
-if(stream)announce();
-}else if(sid&&sub==='sig/'+sid)onViewerMsg(d);
-else if(vpid&&sub==='sig/'+vpid)onStreamerMsg(d);
-}));
-function stop(){
-if(!stream)return;
-clearInterval(annT);
-R.send('ann',{sid,off:1});
-Array.from(pcs.keys()).forEach(v=>{R.send('sig/'+v,{t:'end'});dropPeer(v);});
-stream.getTracks().forEach(t=>t.stop());
-const id=sid;
-stream=null;sid=null;
-streams.delete(id);
-if(tab===id)select('share');else drawTabs();
-stat();
-}
-async function start(){
-if(stream)return;
-goBtn.disabled=true;
-say('');
-sm.textContent='Pick a screen, window or tab to share…';
-try{
-const s=await getScreen(q('.lv-aud').checked);
-if(disposed){s.getTracks().forEach(t=>t.stop());return;}
-stream=s;
-sid='s'+rid();
-me={name:nm(),title:ProfanityFilter.clean(q('.lv-title').value.trim()).slice(0,60)};
-s.getVideoTracks()[0].addEventListener('ended',stop);
-streams.set(sid,{sid,name:me.name,title:me.title,ts:Date.now(),self:true});
-announce();
-annT=setInterval(announce,8000);
-drawTabs();
-}catch(e){say(e.message,1);}
-goBtn.disabled=false;
-stat();
-}
-const timer=setInterval(()=>{
-if(disposed)return;
-const now=Date.now();
-Array.from(streams.values()).forEach(s=>{if(!s.self&&now-s.ts>26000)drop(s.sid);});
-pcs.forEach((pc,v)=>{if(pc.connectionState!=='connected'&&now-pc.t0>30000)dropPeer(v);});
-const up=R.up();
-if(up&&!wasUp)R.send('want',{});
-wasUp=up;
-stat();
-},4000);
-body.addEventListener('click',e=>{
-const t=e.target.closest('.as-tab');
-if(t){select(t.dataset.t);return;}
-if(e.target.closest('.lv-go')){if(stream)stop();else start();}
-});
-ctx.keepOpen(()=>!!stream);
-ctx.onClose(()=>{disposed=true;clearInterval(timer);stop();disconnect();});
-wasUp=R.up();
-R.send('want',{});
-say('');
-drawView();
-stat();
-}
-function CaptureApp(body,ctx){
-const S=FileStore;
-let rec=null,chunks=[],tt=null,t0=0,busy=false,disposed=false;
-const items=[];
-body.innerHTML=`<div class="cp-root"><div class="cp-main"><div class="settings-card"><div class="settings-card-header">🎥 Capture your screen</div><div class="settings-card-desc">Pick a screen, window or tab. Captures are saved to Documents, Captures in File Manager.</div><div class="cp-row"><button type="button" class="settings-btn cp-shot">📸 Screenshot</button><button type="button" class="settings-btn cp-rec">⏺ Start recording</button><button type="button" class="settings-btn settings-btn-secondary cp-open">🗂️ Open folder</button></div><div class="settings-row"><span>Record audio too (if the browser offers it)</span><input type="checkbox" class="cp-aud" style="width:18px;height:18px;cursor:pointer;" /></div><div class="cp-time"></div><div class="settings-msg cp-msg"></div></div><div class="settings-card"><div class="settings-card-header">Saved this session</div><div class="cp-list"></div></div></div></div>`;
-const q=s=>body.querySelector(s);
-const fmtT=ms=>{const s=Math.floor(ms/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
-const stamp=capStamp;
-const say=(t,err)=>{if(disposed)return;const m=q('.cp-msg');m.textContent=t||'';m.classList.toggle('err',!!err);};
-function ui(){
-if(disposed)return;
-q('.cp-shot').disabled=busy||!!rec;
-q('.cp-rec').disabled=busy&&!rec;
-q('.cp-rec').textContent=rec?'⏹ Stop & save':'⏺ Start recording';
-q('.cp-time').textContent=rec?'● Recording '+fmtT(Date.now()-t0):'';
-}
-function drawList(){
-if(disposed)return;
-q('.cp-list').innerHTML=items.length?items.map(n=>'<div class="cp-item"><span>'+escapeHtml(S.iconFor(n)+' '+n.name)+'</span><span class="fm-muted">'+escapeHtml(S.fmtSize(n.size||0))+'</span><button type="button" class="settings-btn settings-btn-secondary" data-o="'+n.id+'">Open</button><button type="button" class="settings-btn settings-btn-secondary" data-s="'+n.id+'">Show</button></div>').join(''):'<div class="settings-card-desc">Nothing yet.</div>';
-}
-async function save(blob,name,mime){
-const n=await capSave(blob,name,mime);
-items.unshift(n);
-if(items.length>20)items.pop();
-drawList();
-return n;
-}
-async function shot(){
-if(busy||rec)return;
-busy=true;say('Pick what to capture…');ui();
-try{
-const r=await capShot();
-if(r.node){items.unshift(r.node);if(items.length>20)items.pop();drawList();say('Screenshot saved.');}
-else say(r.err,1);
-}catch(e){say(e.message,1);}
-busy=false;ui();
-}
-async function startRec(){
-if(rec||busy)return;
-if(!window.MediaRecorder){say("This browser can't record video.",1);return;}
-busy=true;say('');ui();
-let s=null;
-try{
-s=await getScreen(q('.cp-aud').checked);
-if(disposed){s.getTracks().forEach(t=>t.stop());busy=false;return;}
-const mt=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm','video/mp4'].find(m=>MediaRecorder.isTypeSupported(m));
-const r=new MediaRecorder(s,Object.assign({videoBitsPerSecond:5e6},mt?{mimeType:mt}:{}));
-chunks=[];
-r.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
-r.onstop=()=>finish(r,s);
-s.getVideoTracks()[0].addEventListener('ended',stopRec);
-r.start(1000);
-rec=r;t0=Date.now();
-tt=setInterval(ui,500);
-}catch(e){
-if(s)s.getTracks().forEach(t=>t.stop());
-say(e.message,1);
-}
-busy=false;ui();
-}
-function stopRec(){if(rec&&rec.state!=='inactive')rec.stop();}
-async function finish(r,s){
-clearInterval(tt);
-s.getTracks().forEach(t=>t.stop());
-const mt=r.mimeType||'video/webm',ext=/mp4/.test(mt)?'mp4':'webm';
-const blob=new Blob(chunks,{type:mt.split(';')[0]});
-chunks=[];rec=null;
-const name='Recording '+stamp()+'.'+ext;
-try{
-if(!blob.size)throw new Error('Nothing was recorded.');
-await save(blob,name,blob.type);
-say('Recording saved.');
-}catch(e){
-if(blob.size)capDl(blob,name);
-say(((e&&e.message)||'Could not save.')+(blob.size?' It was downloaded instead.':''),1);
-}
-ui();
-}
-body.addEventListener('click',e=>{
-const b=e.target.closest('button');
-if(!b)return;
-if(b.classList.contains('cp-shot'))shot();
-else if(b.classList.contains('cp-rec')){if(rec)stopRec();else startRec();}
-else if(b.classList.contains('cp-open'))capFolder().then(id=>FileManagerAPI.show(id)).catch(e=>say(fsErrorText(e),1));
-else if(b.dataset.o)FileOpen.open(b.dataset.o);
-else if(b.dataset.s){const n=items.find(x=>x.id===b.dataset.s);if(n)FileManagerAPI.show(n.parent,n.id);}
-});
-ctx.keepOpen(()=>!!rec||busy);
-ctx.onClose(()=>{disposed=true;clearInterval(tt);stopRec();});
-drawList();
-ui();
 }
 const FMBridge={instance:null,pending:null};
 const EditorBridge={instance:null,pending:null};
@@ -9247,7 +8854,6 @@ if(!dirty||closing)return true;
 ensureSaved().then(ok=>{if(ok&&!disposed){closing=true;ctx.close();}});
 return false;
 });
-ctx.keepOpen(()=>dirty);
 const warnUnload=e=>{if(dirty){e.preventDefault();e.returnValue='';}};
 window.addEventListener('beforeunload',warnUnload);
 const offChange=S.onChange(async()=>{
@@ -9414,7 +9020,7 @@ loadState();
 if(state.available)showBanner();
 setTimeout(()=>{try{localStorage.removeItem(TRIAL);}catch(e){}},2500);
 setTimeout(()=>check({quiet:!!state.available}),4000);
-setInterval(()=>check({quiet:true}),EVERY);
+setInterval(()=>{if(!document.getElementById("gamePortal").active)check({quiet:true});},EVERY);
 document.addEventListener("visibilitychange",()=>{
 if(document.visibilityState==="visible"&&Date.now()-state.lastChecked>MIN_GAP)check({quiet:true});
 });
