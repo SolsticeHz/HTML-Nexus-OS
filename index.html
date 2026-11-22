@@ -1,7 +1,7 @@
 <!DOCTYPE html><html lang="en" data-theme="dark"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>New Tab</title>
 <script>
-var CONSOLE_OS_VERSION="2026.11.19";
-var CONSOLE_OS_UPDATE_NOTES="Added Super Smash Flash 2, Mario Kart 64, and Scratch Bros Refreshed-ER.";
+var CONSOLE_OS_VERSION="2026.11.20";
+var CONSOLE_OS_UPDATE_NOTES="Optimized file a bit by fixing a bug, fixed a bug that caused issues with pinned apps.";
 var CONSOLE_OS_SUGGESTIONS={googleFormUrl:"",googleEntryMessage:"",formspreeUrl:"https://formspree.io/f/mdeepvqv"};
 var CONSOLE_OS_UPDATE_URL="https://raw.githubusercontent.com/SolsticeHz/HTML-Console-OS/refs/heads/main/Console_OS.html";
 (function(){
@@ -1321,7 +1321,7 @@ border-right:1px solid var(--line);color:var(--te-gutter-fg);user-select:none;-w
 </div>
 <div class="win-body">
 <div id="vidContain" aria-label="Video player container">
-<iframe src="https://cleanreel.lovable.app" title="Video Player" id="vid-frame" sandbox="allow-scripts allow-same-origin allow-forms allow-top-navigation-by-user-activation allow-pointer-lock allow-modals allow-downloads" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen; gamepad" allowfullscreen></iframe>
+<iframe title="Video Player" id="vid-frame" sandbox="allow-scripts allow-same-origin allow-forms allow-top-navigation-by-user-activation allow-pointer-lock allow-modals allow-downloads" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen; gamepad" allowfullscreen></iframe>
 </div>
 </div>
 </div>
@@ -5922,7 +5922,7 @@ description:"Stopwatch with laps and a countdown timer with an alarm and a “Ti
 window:{width:380,height:420},mount:TimerApp},
 {id:"file-manager",type:"app",name:"File Manager",icon:"🗂️",category:"Tools",
 description:"Browse, upload, rename, copy, move and delete files kept in your browser (IndexedDB, so big files fit). Files stay even if you uninstall.",
-window:{width:780,height:520},mount:FileManagerApp,system:true},
+window:{width:780,height:520},mount:FileManagerApp,system:true,itemId:"app:files"},
 {id:"text-editor",type:"app",name:"Text Editor",icon:"📝",category:"Productivity",
 description:"Open, edit and save text files stored in your browser. Ctrl+S saves. Works with desktop notes.",
 window:{width:720,height:520},mount:TextEditorApp,system:true},
@@ -6066,7 +6066,7 @@ hasData:e.type==='app'&&!e.system,
 onUninstall:e.system?null:()=>uninstall(e.id)
 };
 if(e.type==='link')item.url=resolveUrl(e);
-else item.action=()=>AppWindows.open({id:e.id,itemId:'store:'+e.id,title:e.name,icon:e.icon,width:e.window&&e.window.width,height:e.window&&e.window.height,mount:e.mount});
+else item.action=()=>AppWindows.open({id:e.id,itemId:e.itemId||'store:'+e.id,title:e.name,icon:e.icon,width:e.window&&e.window.width,height:e.window&&e.window.height,mount:e.mount});
 return item;
 }
 const installedItems=()=>installed.map(find).filter(Boolean).map(toItem);
